@@ -127,11 +127,6 @@ class DashboardView(ctk.CTkFrame):
             command=self._on_currency_change,
         )
         self._currency_menu.pack(side="left")
-        ctk.CTkButton(cur_frame, text="\u2B07 Export", width=72, height=28, corner_radius=8,
-                       fg_color="#22c55e", text_color="#ffffff", hover_color="#16a34a",
-                       font=ctk.CTkFont(size=11, weight="bold"),
-                       command=self._export_data).pack(side="left", padx=(8, 0))
-
         # Search / Filter bar
         filter_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
         filter_frame.pack(fill="x", padx=20, pady=(4, 4))
@@ -280,11 +275,6 @@ class DashboardView(ctk.CTkFrame):
         self.db.update_preferred_currency(self.user.id, self._display_currency.get())
         self.user.preferred_currency = self._display_currency.get()
 
-    def _export_data(self):
-        from utils.exporter import export_to_excel
-        start, end = self._get_date_range()
-        export_to_excel(self.user.id, start, end, parent=self.winfo_toplevel())
-
     def _show_undo_delete(self):
         deleted = self.db.get_deleted_transactions(self.user.id)
         if not deleted:
@@ -313,9 +303,6 @@ class DashboardView(ctk.CTkFrame):
         self.db.restore_transaction(tx.id, self.user.id)
         self._refresh_data()
         popup.destroy()
-
-    def _get_data_range(self):
-        return self._get_date_range()  # alias for export
 
     def _get_date_range(self):
         if self._range_days is not None:

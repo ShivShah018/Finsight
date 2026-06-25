@@ -1,6 +1,6 @@
 # FinSight — Budget Planner with Savings Goals
 
-**A premium personal-finance desktop application** built with Python, CustomTkinter, and MySQL. Track income/expenses, manage savings goals, set monthly budgets, and export reports — all in a modern dark-themed UI.
+**A premium personal-finance desktop application** built with Python, CustomTkinter, and MySQL. Track income/expenses, manage savings goals, set monthly budgets, and generate PDF reports — all in a modern dark-themed UI.
 
 ---
 
@@ -11,7 +11,6 @@
 - **Savings Goals** — create targets with deadlines, add funds, track progress with bars, complete or cancel
 - **Budget Planner** — set monthly spending limits per category, visual progress bars with over-budget warnings
 - **Multi-Currency** — INR, USD, NPR with live conversion at dashboard render time; switch display currency freely
-- **Export** — export transactions to Excel (.xlsx) or CSV for any date range
 - **Recurring Transactions** — auto-insert monthly recurring bills on app startup
 - **Remember Me** — optional auto-login via saved credentials
 - **Keyboard Shortcuts** — `Ctrl+N` (Add), `Ctrl+D` (Dashboard), `Ctrl+G` (Goals), `Ctrl+B` (Budget)
@@ -29,7 +28,6 @@
 | Python | 3.13+ |
 | Package mgr | uv |
 | Testing | pytest |
-| Export | pandas + openpyxl |
 
 ---
 
@@ -157,7 +155,6 @@ finsight/
 │   ├── currency.py          # Conversion rates, formatting
 │   ├── date_picker.py       # Calendar popup widget
 │   ├── config_manager.py    # Credential persistence
-│   ├── exporter.py          # CSV/Excel export
 │   └── recurring.py         # Auto-process recurring txs
 ├── views/
 │   ├── auth_view.py         # Login / Register
