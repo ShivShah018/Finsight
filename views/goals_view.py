@@ -1,3 +1,4 @@
+import random
 import customtkinter as ctk
 from utils.db_manager import DatabaseManager, User, SavingsGoal
 from utils.currency import SYMBOLS
@@ -170,10 +171,32 @@ class GoalsView(ctk.CTkFrame):
     def _show_add_funds_popup(self, goal_id):
         AddFundsPopup(self.winfo_toplevel(), self.db, goal_id, on_done=lambda: self._refresh())
 
+    def _confetti(self):
+        top = self.winfo_toplevel()
+        colors = ["#22c55e", "#6366f1", "#eab308", "#ef4444", "#ec4899", "#06b6d4"]
+        particles = []
+        for _ in range(40):
+            x = random.randint(50, top.winfo_width() - 50)
+            y = random.randint(50, top.winfo_height() - 50)
+            size = random.randint(4, 10)
+            lbl = ctk.CTkLabel(top, text="\u2B1B", font=ctk.CTkFont(size=size),
+                               text_color=random.choice(colors), fg_color="transparent")
+            lbl.place(x=x, y=y)
+            particles.append(lbl)
+
+        def fade():
+            for p in particles:
+                try:
+                    p.place_forget()
+                except Exception:
+                    pass
+        top.after(1500, fade)
+
     def _complete_goal(self, goal_id):
         ok = messagebox.askyesno("Complete Goal", "Mark this goal as completed?", parent=self.winfo_toplevel())
         if ok:
             self.db.complete_goal(goal_id)
+            self._confetti()
             self._refresh()
 
     def _cancel_goal(self, goal_id):
@@ -192,13 +215,13 @@ class NewGoalPopup(ctk.CTkToplevel):
         self.user = user
         self.on_done = on_done
         self.title("New Savings Goal")
-        self.geometry("420x440")
+        self.geometry("420x520")
         self.configure(fg_color="#13172b")
         self.resizable(False, False)
-        self.minsize(420, 440)
+        self.minsize(420, 520)
         if master:
-            x = master.winfo_rootx() + 120; y = master.winfo_rooty() + 80
-            self.geometry(f"420x440+{x}+{y}")
+            x = master.winfo_rootx() + 120; y = master.winfo_rooty() + 60
+            self.geometry(f"420x520+{x}+{y}")
         self._build()
         self.grab_set(); self.focus()
 
@@ -239,6 +262,24 @@ class NewGoalPopup(ctk.CTkToplevel):
         self._deadline_entry.grid(row=row, column=0, sticky="ew", pady=(4, 6))
         row += 1
 
+        # Auto-fund
+        self._auto_fund_var = ctk.BooleanVar(value=False)
+        self._auto_fund_cb = ctk.CTkCheckBox(main, text="Auto-fund from income category",
+                                              variable=self._auto_fund_var,
+                                              fg_color=COLORS["accent"],
+                                              font=ctk.CTkFont(size=12),
+                                              text_color=COLORS["text_secondary"],
+                                              command=self._toggle_auto_fund)
+        self._auto_fund_cb.grid(row=row, column=0, sticky="w", pady=(4, 0))
+        row += 1
+
+        self._auto_fund_amount_entry = ctk.CTkEntry(main, height=38, corner_radius=8,
+                                                     border_color=COLORS["border"],
+                                                     font=ctk.CTkFont(size=13),
+                                                     placeholder_text="Monthly auto-fund amount")
+        self._auto_fund_amount_entry.grid(row=row, column=0, sticky="ew", pady=(4, 6))
+        self._auto_fund_amount_entry.configure(state="disabled")
+
         self._status = ctk.CTkLabel(main, text="", font=ctk.CTkFont(size=12))
         self._status.grid(row=row, column=0, pady=6)
         row += 1
@@ -254,6 +295,10 @@ class NewGoalPopup(ctk.CTkToplevel):
                        fg_color="#334155", text_color="#f1f5f9",
                        hover_color="#475569", font=ctk.CTkFont(size=15),
                        command=self.destroy).pack(side="left", padx=8)
+
+    def _toggle_auto_fund(self):
+        state = "normal" if self._auto_fund_var.get() else "disabled"
+        self._auto_fund_amount_entry.configure(state=state)
 
     def _save(self):
         name = self._name_entry.get().strip()
@@ -275,7 +320,14 @@ class NewGoalPopup(ctk.CTkToplevel):
             except ValueError:
                 self._status.configure(text="\u26A0 Use YYYY-MM-DD format", text_color="#ef4444")
                 return
-        self.db.add_goal(self.user.id, name, target, deadline)
+        gid = self.db.add_goal(self.user.id, name, target, deadline)
+        if self._auto_fund_var.get():
+            try:
+                af_amount = float(self._auto_fund_amount_entry.get().strip())
+                if af_amount > 0:
+                    self.db.set_goal_auto_fund(gid, self.user.id, af_amount, None)
+            except ValueError:
+                pass
         self.on_done()
         self.destroy()
 

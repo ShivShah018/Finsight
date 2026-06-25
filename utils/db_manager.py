@@ -295,7 +295,7 @@ class DatabaseManager:
             query += " AND YEAR(t.transaction_date) = %s AND MONTH(t.transaction_date) = %s"
             params.extend([year, month])
 
-        query += " ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT %s"
+        query += " AND t.deleted_at IS NULL ORDER BY t.transaction_date DESC, t.created_at DESC LIMIT %s"
         params.append(limit)
 
         cursor.execute(query, params)
@@ -528,3 +528,149 @@ class DatabaseManager:
         row = cursor.fetchone()
         cursor.close()
         return row[0] if row else None
+
+    def authenticate_user_by_id(self, user_id: int) -> Optional[User]:
+        self.connect()
+        cursor = self.connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT id, full_name, email, currency, preferred_currency FROM users WHERE id = %s",
+            (user_id,),
+        )
+        row = cursor.fetchone()
+        cursor.close()
+        return User(**row) if row else None
+
+    # ── Soft Delete ───────────────────────────────────────────
+    def soft_delete_transaction(self, transaction_id: int, user_id: int) -> None:
+        self.connect()
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE transactions SET deleted_at = NOW() WHERE id = %s AND user_id = %s AND deleted_at IS NULL",
+            (transaction_id, user_id),
+        )
+        self.connection.commit()
+        cursor.close()
+
+    def restore_transaction(self, transaction_id: int, user_id: int) -> None:
+        self.connect()
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE transactions SET deleted_at = NULL WHERE id = %s AND user_id = %s",
+            (transaction_id, user_id),
+        )
+        self.connection.commit()
+        cursor.close()
+
+    def get_deleted_transactions(self, user_id: int) -> list[TransactionRow]:
+        self.connect()
+        cursor = self.connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT t.id, t.category_id, c.name AS category_name, "
+            "t.amount, t.type, t.currency, t.description, t.transaction_date "
+            "FROM transactions t "
+            "JOIN categories c ON t.category_id = c.id "
+            "WHERE t.user_id = %s AND t.deleted_at IS NOT NULL "
+            "ORDER BY t.deleted_at DESC LIMIT 20",
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        return [TransactionRow(**r) for r in rows]
+
+    # ── Bills ─────────────────────────────────────────────────
+    def mark_transaction_as_bill(self, transaction_id: int, user_id: int) -> None:
+        self.connect()
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE transactions SET is_bill = 1 WHERE id = %s AND user_id = %s",
+            (transaction_id, user_id),
+        )
+        self.connection.commit()
+        cursor.close()
+
+    def get_due_bills(self, user_id: int) -> list[TransactionRow]:
+        self.connect()
+        cursor = self.connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT t.id, t.category_id, c.name AS category_name, "
+            "t.amount, t.type, t.currency, t.description, t.transaction_date "
+            "FROM transactions t "
+            "JOIN categories c ON t.category_id = c.id "
+            "WHERE t.user_id = %s AND t.is_bill = 1 AND t.deleted_at IS NULL "
+            "AND t.transaction_date >= DATE_SUB(CURDATE(), INTERVAL 3 DAY) "
+            "AND t.transaction_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY) "
+            "ORDER BY t.transaction_date",
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+        cursor.close()
+        return [TransactionRow(**r) for r in rows]
+
+    # ── Auto-Fund Goals ───────────────────────────────────────
+    def set_goal_auto_fund(self, goal_id: int, user_id: int,
+                           amount: float, category_id: Optional[int] = None) -> None:
+        self.connect()
+        cursor = self.connection.cursor()
+        cursor.execute(
+            "UPDATE savings_goals SET auto_fund_amount = %s, auto_fund_category_id = %s "
+            "WHERE id = %s AND user_id = %s",
+            (amount, category_id, goal_id, user_id),
+        )
+        self.connection.commit()
+        cursor.close()
+
+    def process_auto_fund(self, user_id: int) -> int:
+        """Auto-fund goals when income is recorded in the matching category."""
+        self.connect()
+        cursor = self.connection.cursor(dictionary=True)
+        cursor.execute(
+            "SELECT g.id, g.auto_fund_amount, g.auto_fund_category_id, "
+            "COALESCE(SUM(t.amount), 0) AS income_amount "
+            "FROM savings_goals g "
+            "LEFT JOIN transactions t ON t.user_id = g.user_id "
+            "AND t.category_id = g.auto_fund_category_id "
+            "AND t.type = 'income' AND t.deleted_at IS NULL "
+            "AND t.transaction_date >= DATE_FORMAT(CURDATE(), '%Y-%m-01') "
+            "WHERE g.user_id = %s AND g.status = 'active' AND g.auto_fund_amount > 0 "
+            "GROUP BY g.id",
+            (user_id,),
+        )
+        rows = cursor.fetchall()
+        count = 0
+        for r in rows:
+            if r["auto_fund_amount"] > 0:
+                cursor.execute(
+                    "UPDATE savings_goals SET current_amount = "
+                    "LEAST(current_amount + %s, target_amount) WHERE id = %s AND status = 'active'",
+                    (r["auto_fund_amount"], r["id"]),
+                )
+                count += 1
+        self.connection.commit()
+        cursor.close()
+        return count
+
+    # ── Split Transactions ────────────────────────────────────
+    def split_transaction(self, parent_tx_id: int, user_id: int,
+                          splits: list[dict]) -> list[int]:
+        """
+        splits: [{"category_id": int, "amount": float, "split_note": str}, ...]
+        """
+        self.connect()
+        parent = self.get_transaction_by_id(parent_tx_id, user_id)
+        if not parent:
+            raise ValueError("Parent transaction not found")
+        cursor = self.connection.cursor()
+        ids = []
+        for split in splits:
+            cursor.execute(
+                "INSERT INTO transactions (user_id, category_id, amount, type, currency, "
+                "description, transaction_date, parent_transaction_id, split_note) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (user_id, split["category_id"], split["amount"], parent.type,
+                 parent.currency, split.get("split_note", ""),
+                 parent.transaction_date, parent_tx_id, split.get("split_note")),
+            )
+            ids.append(cursor.lastrowid)
+        self.connection.commit()
+        cursor.close()
+        return ids

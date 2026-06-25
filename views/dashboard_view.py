@@ -132,6 +132,19 @@ class DashboardView(ctk.CTkFrame):
                        font=ctk.CTkFont(size=11, weight="bold"),
                        command=self._export_data).pack(side="left", padx=(8, 0))
 
+        # Search / Filter bar
+        filter_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
+        filter_frame.pack(fill="x", padx=20, pady=(4, 4))
+        self._search_var = ctk.StringVar()
+        self._search_var.trace_add("write", lambda *_: self._refresh_data())
+        ctk.CTkEntry(filter_frame, textvariable=self._search_var, height=32, corner_radius=8,
+                      placeholder_text="\U0001F50D  Search transactions...",
+                      border_color=COLORS["border"], font=ctk.CTkFont(size=12)
+                      ).pack(side="left", fill="x", expand=True, padx=(0, 8))
+        ctk.CTkButton(filter_frame, text="Undo delete", width=90, height=30, corner_radius=8,
+                       fg_color="#1a1f3a", text_color=COLORS["text_muted"],
+                       font=ctk.CTkFont(size=11), command=self._show_undo_delete).pack(side="right")
+
         ctk.CTkLabel(self.scroll, text="Your financial snapshot",
                      font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], anchor="w"
                      ).pack(anchor="w", padx=20, pady=(0, 6))
@@ -272,6 +285,38 @@ class DashboardView(ctk.CTkFrame):
         start, end = self._get_date_range()
         export_to_excel(self.user.id, start, end, parent=self.winfo_toplevel())
 
+    def _show_undo_delete(self):
+        deleted = self.db.get_deleted_transactions(self.user.id)
+        if not deleted:
+            messagebox.showinfo("Undo Delete", "No recently deleted transactions.", parent=self.winfo_toplevel())
+            return
+        popup = ctk.CTkToplevel(self.winfo_toplevel())
+        popup.title("Recently Deleted")
+        popup.geometry("500x400")
+        popup.configure(fg_color="#13172b")
+        ctk.CTkLabel(popup, text="Recently Deleted Transactions",
+                     font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color=COLORS["text_primary"]).pack(pady=(12, 8))
+        scroll = ctk.CTkScrollableFrame(popup, fg_color="transparent")
+        scroll.pack(fill="both", expand=True, padx=12, pady=6)
+        for tx in deleted:
+            row = ctk.CTkFrame(scroll, fg_color="#1a1f3a", corner_radius=8)
+            row.pack(fill="x", pady=3)
+            ctk.CTkLabel(row, text=f"{tx.transaction_date.strftime('%d %b')}  {tx.category_name}  \u20B9{tx.amount:,.2f}",
+                         font=ctk.CTkFont(size=12), text_color=COLORS["text_secondary"], anchor="w"
+                         ).pack(side="left", padx=12, pady=6)
+            ctk.CTkButton(row, text="Restore", width=60, height=26, corner_radius=6,
+                           fg_color=COLORS["accent"], font=ctk.CTkFont(size=11),
+                           command=lambda txi=tx, p=popup: self._restore_tx(txi, p)).pack(side="right", padx=8, pady=4)
+
+    def _restore_tx(self, tx, popup):
+        self.db.restore_transaction(tx.id, self.user.id)
+        self._refresh_data()
+        popup.destroy()
+
+    def _get_data_range(self):
+        return self._get_date_range()  # alias for export
+
     def _get_date_range(self):
         if self._range_days is not None:
             end = today
@@ -286,6 +331,16 @@ class DashboardView(ctk.CTkFrame):
             all_txs = self.db.get_transactions(self.user.id, limit=5000)
             range_start, range_end = self._get_date_range()
             self._all_txs = [t for t in all_txs if range_start <= t.transaction_date <= range_end]
+
+            # Search filter
+            q = self._search_var.get().strip().lower()
+            if q:
+                self._all_txs = [t for t in self._all_txs
+                                 if q in t.category_name.lower()
+                                 or (t.description and q in t.description.lower())
+                                 or q in t.currency.lower()
+                                 or q in t.transaction_date.strftime("%d %b %Y").lower()
+                                 or q in f"{t.amount:.2f}"]
 
             income_total = sum(convert_amount(t.amount, t.currency, cur) for t in self._all_txs if t.type == "income")
             expense_total = sum(convert_amount(t.amount, t.currency, cur) for t in self._all_txs if t.type == "expense")
