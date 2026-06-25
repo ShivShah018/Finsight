@@ -301,7 +301,11 @@ class DatabaseManager:
         cursor.execute(query, params)
         rows = cursor.fetchall()
         cursor.close()
-        return [TransactionRow(**r) for r in rows]
+        results = []
+        for r in rows:
+            r["amount"] = float(r["amount"])
+            results.append(TransactionRow(**r))
+        return results
 
     def get_summary(self, user_id: int,
                     month: Optional[int] = None,
@@ -575,7 +579,11 @@ class DatabaseManager:
         )
         rows = cursor.fetchall()
         cursor.close()
-        return [TransactionRow(**r) for r in rows]
+        results = []
+        for r in rows:
+            r["amount"] = float(r["amount"])
+            results.append(TransactionRow(**r))
+        return results
 
     # ── Bills ─────────────────────────────────────────────────
     def mark_transaction_as_bill(self, transaction_id: int, user_id: int) -> None:
@@ -604,7 +612,11 @@ class DatabaseManager:
         )
         rows = cursor.fetchall()
         cursor.close()
-        return [TransactionRow(**r) for r in rows]
+        results = []
+        for r in rows:
+            r["amount"] = float(r["amount"])
+            results.append(TransactionRow(**r))
+        return results
 
     # ── Auto-Fund Goals ───────────────────────────────────────
     def set_goal_auto_fund(self, goal_id: int, user_id: int,
