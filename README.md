@@ -177,4 +177,25 @@ finsight/
 
 ## Screenshots
 
-(Add screenshots of Dashboard, Goals, and Budget tabs here for your portfolio)
+| Dashboard | Add Transaction |
+|-----------|----------------|
+| ![Dashboard](assets/screenshot_dashboard.png) | ![Add Transaction](assets/screenshot_add_tx.png) |
+
+| Savings Goals | Budget Planner |
+|---------------|----------------|
+| ![Goals](assets/screenshot_goals.png) | ![Budget](assets/screenshot_budget.png) |
+
+### Capture your own screenshots
+
+```bash
+# 1. Seed demo data
+$env:FINSIGHT_DB_PASSWORD="your_password"
+uv run python scripts/seed_demo.py
+
+# 2. Launch the app and login with: demo@finsight.app / demo123
+$env:FINSIGHT_DB_PASSWORD="your_password"
+uv run python main.py
+
+# 3. With the app open and logged in, run:
+uv run python scripts/capture_screenshots.py
+```
