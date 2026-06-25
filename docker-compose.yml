@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: finsight-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: Shiv@m018
+      MYSQL_DATABASE: finsight
+    ports:
+      - "3306:3306"
+    volumes:
+      - finsight_data:/var/lib/mysql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/migration_v2.sql:/docker-entrypoint-initdb.d/02-migration_v2.sql:ro
+      - ./database/migration_v3.sql:/docker-entrypoint-initdb.d/03-migration_v3.sql:ro
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finsight-app
+    environment:
+      FINSIGHT_DB_HOST: db
+      FINSIGHT_DB_PASSWORD: Shiv@m018
+      DISPLAY: ${DISPLAY:-:0}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+    depends_on:
+      - db
+
+volumes:
+  finsight_data:
