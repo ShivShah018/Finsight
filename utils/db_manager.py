@@ -460,7 +460,11 @@ class DatabaseManager:
         )
         rows = cursor.fetchall()
         cursor.close()
-        return [BudgetLimit(**r) for r in rows]
+        results = []
+        for r in rows:
+            r["monthly_limit"] = float(r["monthly_limit"])
+            results.append(BudgetLimit(**r))
+        return results
 
     # ── Recurring Transactions ─────────────────────────────────
     def add_recurring(self, user_id: int, category_id: int, amount: float,

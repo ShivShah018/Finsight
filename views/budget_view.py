@@ -85,7 +85,27 @@ class BudgetView(ctk.CTkFrame):
                 spent = cat_expense.get(b.category_name, 0.0)
                 limit = b.monthly_limit
                 pct = (spent / limit * 100) if limit > 0 else 0
-                over = pct > 100
+
+                if pct >= 100:
+                    bar_color = "#ef4444"
+                    tip_color = "#ef4444"
+                    tip = f"Over budget by {sym}{spent - limit:,.2f}"
+                elif pct >= 90:
+                    bar_color = "#f97316"
+                    tip_color = "#f97316"
+                    tip = f"Almost over! Only {sym}{limit - spent:,.2f} left"
+                elif pct >= 70:
+                    bar_color = "#eab308"
+                    tip_color = "#eab308"
+                    tip = f"Nearing limit — {sym}{limit - spent:,.2f} remaining"
+                else:
+                    bar_color = "#22c55e"
+                    tip_color = "#22c55e"
+                    remaining = limit - spent
+                    if remaining > 5000:
+                        tip = "Well under budget"
+                    else:
+                        tip = f"{sym}{remaining:,.2f} remaining"
 
                 card = ctk.CTkFrame(self._cards_frame, corner_radius=14, border_width=1,
                                      border_color=COLORS["border"], fg_color=COLORS["card_bg"])
@@ -96,35 +116,29 @@ class BudgetView(ctk.CTkFrame):
                 ctk.CTkLabel(top, text=b.category_name, font=ctk.CTkFont(size=15, weight="bold"),
                              text_color=COLORS["text_primary"]).pack(side="left")
 
-                status_color = COLORS["expense"] if over else COLORS["income"]
-                status_text = f"{'OVER!' if over else 'On track'}"
-                ctk.CTkLabel(top, text=status_text, font=ctk.CTkFont(size=11, weight="bold"),
-                             text_color=status_color).pack(side="right", padx=(6, 0))
-
                 bar_frame = ctk.CTkFrame(card, fg_color="transparent")
                 bar_frame.pack(fill="x", padx=16, pady=(4, 2))
                 bar_bg = ctk.CTkFrame(bar_frame, height=12, corner_radius=6, fg_color="#1a1f3a")
                 bar_bg.pack(fill="x")
-                bar_fill = ctk.CTkFrame(bar_bg, height=12, corner_radius=6,
-                                        fg_color=COLORS["expense"] if over else COLORS["accent"])
+                bar_fill = ctk.CTkFrame(bar_bg, height=12, corner_radius=6, fg_color=bar_color)
                 fill_w = min(pct, 100) / 100
                 bar_fill.place(relx=0, rely=0, relwidth=fill_w, relheight=1)
-                if pct > 100:
-                    excess = ctk.CTkFrame(bar_bg, height=12, corner_radius=0,
-                                          fg_color=COLORS["expense"])
+                if pct >= 100:
+                    excess = ctk.CTkFrame(bar_bg, height=12, corner_radius=0, fg_color="#ef4444")
                     excess.place(relx=1, rely=0, relwidth=min((pct - 100) / 100, 0.2), relheight=1,
                                  bordermode="outside")
 
                 info = ctk.CTkFrame(card, fg_color="transparent")
-                info.pack(fill="x", padx=16, pady=(2, 10))
+                info.pack(fill="x", padx=16, pady=(4, 2))
                 ctk.CTkLabel(info, text=f"{sym}{spent:,.2f} / {sym}{limit:,.2f}",
                              font=ctk.CTkFont(size=13, weight="bold"),
-                             text_color=COLORS["expense"] if over else COLORS["text_primary"]
-                             ).pack(side="left")
+                             text_color=COLORS["text_primary"]).pack(side="left")
                 ctk.CTkLabel(info, text=f"{pct:.0f}% used",
                              font=ctk.CTkFont(size=12),
-                             text_color=COLORS["expense"] if over else COLORS["text_muted"]
-                             ).pack(side="right")
+                             text_color=COLORS["text_muted"]).pack(side="right")
+
+                ctk.CTkLabel(card, text=tip, font=ctk.CTkFont(size=11, weight="bold"),
+                             text_color=tip_color, anchor="w").pack(anchor="w", padx=16, pady=(0, 8))
 
                 act = ctk.CTkFrame(card, fg_color="transparent")
                 act.pack(fill="x", padx=16, pady=(0, 10))
@@ -168,10 +182,10 @@ class SetBudgetPopup(ctk.CTkToplevel):
         self.edit_budget = edit_budget
         title = "Edit Budget" if edit_budget else "Set Budget"
         self.title(title)
-        self.geometry("380x280")
+        self.geometry("400x340")
         self.configure(fg_color="#13172b")
         self.resizable(False, False)
-        self.minsize(380, 280)
+        self.minsize(400, 340)
         if master:
             x = master.winfo_rootx() + 150; y = master.winfo_rooty() + 120
             self.geometry(f"380x280+{x}+{y}")
