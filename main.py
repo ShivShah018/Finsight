@@ -62,7 +62,6 @@ class FinSightApp(ctk.CTk):
         ("AI Insights",      "\U0001F9E0",   InsightsView),
     ]
 
-    is_dark_mode = True
 
     def __init__(self):
         super().__init__()
@@ -130,7 +129,6 @@ class FinSightApp(ctk.CTk):
         self._build_sidebar()
         self._build_content_area()
         self._switch_view(0)
-        self.after(1000, self._update_bills)
 
     def _build_sidebar(self):
         sidebar = ctk.CTkFrame(
@@ -194,26 +192,7 @@ class FinSightApp(ctk.CTk):
         # Spacer
         ctk.CTkFrame(sidebar, fg_color="transparent").pack(fill="both", expand=True)
 
-        # Theme toggle
-        theme_frame = ctk.CTkFrame(sidebar, fg_color="transparent")
-        theme_frame.pack(fill="x", padx=12, pady=(0, 4))
-        ctk.CTkLabel(theme_frame, text="\U0001F319  Theme",
-                     font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(side="left")
-        self._theme_switch = ctk.CTkSwitch(theme_frame, text="", onvalue="dark", offvalue="light",
-                                            command=self._toggle_theme,
-                                            progress_color=COLORS["accent"],
-                                            button_color=COLORS["accent"],
-                                            switch_width=36, switch_height=20)
-        self._theme_switch.pack(side="right")
-        self._theme_switch.select()
-
         # Bill badge
-        self._bill_badge = ctk.CTkLabel(sidebar, text="",
-                                         font=ctk.CTkFont(size=10, weight="bold"),
-                                         fg_color="#ef4444", corner_radius=8,
-                                         padx=6, pady=2)
-        self._bill_badge.pack(fill="x", padx=12, pady=(0, 4))
-
         logout_btn = ctk.CTkButton(
             sidebar,
             text="  \U0001F6AA  Logout",
@@ -266,27 +245,6 @@ class FinSightApp(ctk.CTk):
         )
         self._current_view.grid(row=0, column=0, sticky="nswe")
         self._current_view.grid_columnconfigure(0, weight=1)
-
-    def _toggle_theme(self):
-        self.is_dark_mode = not self.is_dark_mode
-        mode = "dark" if self.is_dark_mode else "light"
-        ctk.set_appearance_mode(mode)
-        if self.is_dark_mode:
-            self._theme_switch.select()
-        else:
-            self._theme_switch.deselect()
-
-    def _update_bills(self):
-        if not self._current_user:
-            return
-        try:
-            bills = DatabaseManager.get_instance().get_due_bills(self._current_user.id)
-            if bills:
-                self._bill_badge.configure(text=f"  \U0001F4DC  {len(bills)} bill(s) due  ")
-            else:
-                self._bill_badge.configure(text="")
-        except Exception:
-            self._bill_badge.configure(text="")
 
     def _safe_switch(self, index):
         if self._current_user and self._content_frame:

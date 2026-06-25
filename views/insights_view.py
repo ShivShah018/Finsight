@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from utils.db_manager import DatabaseManager, User
-from utils.insights import train_spending_model, detect_anomalies, suggest_category, generate_tips
+from utils.insights import train_spending_model, suggest_category, generate_tips
 from utils.currency import SYMBOLS
 from datetime import date, timedelta
 
@@ -34,7 +34,7 @@ class InsightsView(ctk.CTkFrame):
         ctk.CTkLabel(self.scroll, text="AI Insights",
                      font=ctk.CTkFont(size=28, weight="bold"),
                      anchor="w").pack(anchor="w", padx=20, pady=(12, 2))
-        ctk.CTkLabel(self.scroll, text="Spending predictions, anomaly detection & smart tips",
+        ctk.CTkLabel(self.scroll,                      text="Spending predictions, AI category suggester & smart tips",
                      font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], anchor="w"
                      ).pack(anchor="w", padx=20, pady=(0, 6))
 
@@ -76,30 +76,6 @@ class InsightsView(ctk.CTkFrame):
                 ctk.CTkLabel(pred_card, text=f"Confidence: {pred['confidence']*100:.0f}%",
                              font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w"
                              ).pack(anchor="w", padx=16, pady=(0, 12))
-
-            # Anomaly card
-            anomalies = detect_anomalies(txs)
-            anom_card = self._make_card(self._cards_frame)
-            ctk.CTkLabel(anom_card, text="\U0001F50D  Anomaly Detection",
-                         font=ctk.CTkFont(size=15, weight="bold"),
-                         text_color=COLORS["text_primary"], anchor="w").pack(anchor="w", padx=16, pady=(12, 4))
-            if not anomalies:
-                ctk.CTkLabel(anom_card, text="No unusual transactions detected.",
-                             text_color=COLORS["text_muted"]).pack(anchor="w", padx=16, pady=(0, 12))
-            else:
-                sym = SYMBOLS.get(self.user.preferred_currency or "INR", "")
-                for tx, score in anomalies[:5]:
-                    f = ctk.CTkFrame(anom_card, fg_color="transparent")
-                    f.pack(fill="x", padx=16, pady=2)
-                    ctk.CTkLabel(f, text=f"\u26A0 {tx.category_name}: {sym}{tx.amount:,.2f}",
-                                 font=ctk.CTkFont(size=12), text_color=COLORS["expense"], anchor="w"
-                                 ).pack(side="left")
-                    ctk.CTkLabel(f, text=tx.transaction_date.strftime("%d %b"),
-                                 font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="e"
-                                 ).pack(side="right")
-                ctk.CTkLabel(anom_card, text=f"{len(anomalies)} unusual transaction(s) found",
-                             font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w"
-                             ).pack(anchor="w", padx=16, pady=(4, 8))
 
             # Tips card
             tips = generate_tips(self.user, txs, goals, budgets, pred)

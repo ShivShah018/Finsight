@@ -186,16 +186,6 @@ def predict_spending(user_id: int):
     txs = db.get_transactions(user_id, limit=5000)
     return train_spending_model(txs)
 
-@app.get("/insights/anomalies/{user_id}")
-def detect_anomalies(user_id: int):
-    db.connect()
-    from utils.insights import detect_anomalies
-    txs = db.get_transactions(user_id, limit=5000)
-    results = detect_anomalies(txs)
-    return [{"id": t.id, "amount": t.amount, "category": t.category_name,
-             "date": str(t.transaction_date), "description": t.description,
-             "anomaly_score": s} for t, s in results]
-
 @app.get("/insights/suggest-category")
 def suggest_category(description: str, user_id: int):
     db.connect()
