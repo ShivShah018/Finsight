@@ -196,6 +196,13 @@ def suggest_category(description: str, user_id: int):
         return {"category": result[0].name, "category_id": result[0].id, "score": result[1]}
     return {"category": None, "score": 0}
 
+@app.get("/insights/cluster/{user_id}")
+def clustering(user_id: int):
+    db.connect()
+    from utils.insights import cluster_transactions
+    txs = db.get_transactions(user_id, limit=5000)
+    return cluster_transactions(txs)
+
 
 # ── Report ───────────────────────────────────────────────────
 @app.post("/report/generate/{user_id}")

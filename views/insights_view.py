@@ -1,6 +1,6 @@
 import customtkinter as ctk
 from utils.db_manager import DatabaseManager, User
-from utils.insights import train_spending_model, suggest_category, generate_tips
+from utils.insights import train_spending_model, suggest_category, generate_tips, cluster_transactions
 from utils.currency import SYMBOLS
 from datetime import date, timedelta
 
@@ -34,7 +34,7 @@ class InsightsView(ctk.CTkFrame):
         ctk.CTkLabel(self.scroll, text="AI Insights",
                      font=ctk.CTkFont(size=28, weight="bold"),
                      anchor="w").pack(anchor="w", padx=20, pady=(12, 2))
-        ctk.CTkLabel(self.scroll,                      text="Spending predictions, AI category suggester & smart tips",
+        ctk.CTkLabel(self.scroll,                      text="Spending predictions, K-Means clustering, category suggester & smart tips",
                      font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], anchor="w"
                      ).pack(anchor="w", padx=20, pady=(0, 6))
 
@@ -76,6 +76,40 @@ class InsightsView(ctk.CTkFrame):
                 ctk.CTkLabel(pred_card, text=f"Confidence: {pred['confidence']*100:.0f}%",
                              font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w"
                              ).pack(anchor="w", padx=16, pady=(0, 12))
+
+            # Clustering card
+            clusters = cluster_transactions(txs, n_clusters=3)
+            clust_card = self._make_card(self._cards_frame)
+            ctk.CTkLabel(clust_card, text="\U0001F52E  K-Means Clustering",
+                         font=ctk.CTkFont(size=15, weight="bold"),
+                         text_color=COLORS["text_primary"], anchor="w").pack(anchor="w", padx=16, pady=(12, 4))
+            ctk.CTkLabel(clust_card, text="Expenses grouped into 3 clusters by amount, day & frequency",
+                         font=ctk.CTkFont(size=11), text_color=COLORS["text_muted"], anchor="w"
+                         ).pack(anchor="w", padx=16, pady=(0, 4))
+            if not clusters:
+                ctk.CTkLabel(clust_card, text="Not enough expense data to cluster (min 3 txns).",
+                             text_color=COLORS["text_muted"]).pack(anchor="w", padx=16, pady=(0, 12))
+            else:
+                sym = SYMBOLS.get(self.user.preferred_currency or "INR", "")
+                for c in clusters:
+                    bar_frame = ctk.CTkFrame(clust_card, fg_color="transparent")
+                    bar_frame.pack(fill="x", padx=16, pady=2)
+                    ctk.CTkLabel(bar_frame, text=f"{c['label']}",
+                                 font=ctk.CTkFont(size=12, weight="bold"),
+                                 text_color=COLORS["text_primary"], anchor="w", width=140
+                                 ).pack(side="left")
+                    ctk.CTkLabel(bar_frame,
+                                 text=f"{c['count']} txns  |  {sym}{c['avg_amount']:,.0f} avg  |  {c['percentage']:.0f}%",
+                                 font=ctk.CTkFont(size=11), text_color=COLORS["text_secondary"], anchor="w"
+                                 ).pack(side="left", padx=(4, 0))
+                    bar_bg = ctk.CTkFrame(clust_card, height=6, corner_radius=3,
+                                          fg_color="#1a1f3a")
+                    bar_bg.pack(fill="x", padx=16, pady=(0, 4))
+                    bar = ctk.CTkFrame(bar_bg, height=6, corner_radius=3,
+                                       fg_color=["#ef4444", "#eab308", "#6366f1"][c['cluster_id'] % 3])
+                    bar.place(relwidth=c['percentage'] / 100, relheight=1)
+                ctk.CTkLabel(clust_card, text="",
+                             font=ctk.CTkFont(size=6)).pack(pady=(0, 4))
 
             # Tips card
             tips = generate_tips(self.user, txs, goals, budgets, pred)

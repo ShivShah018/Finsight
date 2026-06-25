@@ -1,7 +1,8 @@
 """AI/ML insights, predictions, and smart tips."""
 import numpy as np
 from sklearn.linear_model import LinearRegression, LogisticRegression
-from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 from datetime import date, timedelta
 from collections import defaultdict
 
@@ -132,6 +133,62 @@ def suggest_category(description, categories):
     if cat_match:
         return (cat_match[0], round(confidence, 2))
     return None
+
+
+def cluster_transactions(transactions, n_clusters=3):
+    """
+    Cluster expense transactions using K-Means.
+    Features: amount (scaled), day_of_month, day_of_week, is_weekend.
+    Returns list of {cluster_id, label, count, avg_amount, total, percentage}.
+    """
+    expenses = [t for t in transactions if t.type == "expense"]
+    if len(expenses) < n_clusters:
+        return []
+
+    features = []
+    for t in expenses:
+        d = t.transaction_date
+        features.append([t.amount, d.day, d.weekday(), 1 if d.weekday() >= 5 else 0])
+    X = np.array(features)
+
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
+    model = KMeans(n_clusters=n_clusters, random_state=42, n_init=10)
+    labels = model.fit_predict(X_scaled)
+
+    clusters = {}
+    for i, label in enumerate(labels):
+        label = int(label)
+        if label not in clusters:
+            clusters[label] = {"total": 0, "count": 0, "amounts": []}
+        clusters[label]["total"] += expenses[i].amount
+        clusters[label]["count"] += 1
+        clusters[label]["amounts"].append(expenses[i].amount)
+
+    sorted_clusters = sorted(clusters.items(), key=lambda x: x[1]["total"], reverse=True)
+    total_expense = sum(t.amount for t in expenses)
+
+    cluster_names = {
+        0: "High Spends",
+        1: "Everyday Essentials",
+        2: "Occasional",
+    }
+
+    results = []
+    for rank, (orig_label, data) in enumerate(sorted_clusters):
+        avg = data["total"] / data["count"]
+        label_name = cluster_names.get(rank, f"Cluster {rank + 1}")
+        results.append({
+            "cluster_id": rank,
+            "label": label_name,
+            "count": data["count"],
+            "avg_amount": round(avg, 2),
+            "total": round(data["total"], 2),
+            "percentage": round(data["total"] / total_expense * 100, 1),
+        })
+
+    return results
 
 
 def generate_tips(user, transactions, goals, budgets, spending_prediction):
