@@ -34,7 +34,7 @@ class InsightsView(ctk.CTkFrame):
         ctk.CTkLabel(self.scroll, text="AI Insights",
                      font=ctk.CTkFont(size=28, weight="bold"),
                      anchor="w").pack(anchor="w", padx=20, pady=(12, 2))
-        ctk.CTkLabel(self.scroll,                      text="Spending predictions, K-Means clustering, category suggester & smart tips",
+        ctk.CTkLabel(self.scroll,                      text="Spending predictions, spending behavior grouping, category suggester & smart tips",
                      font=ctk.CTkFont(size=13), text_color=COLORS["text_secondary"], anchor="w"
                      ).pack(anchor="w", padx=20, pady=(0, 6))
 
@@ -80,7 +80,7 @@ class InsightsView(ctk.CTkFrame):
             # Clustering card
             clusters = cluster_transactions(txs, n_clusters=3)
             clust_card = self._make_card(self._cards_frame)
-            ctk.CTkLabel(clust_card, text="\U0001F52E  K-Means Clustering",
+            ctk.CTkLabel(clust_card, text="\U0001F52E  Spending Behavior Groups",
                          font=ctk.CTkFont(size=15, weight="bold"),
                          text_color=COLORS["text_primary"], anchor="w").pack(anchor="w", padx=16, pady=(12, 4))
             ctk.CTkLabel(clust_card, text="Expenses grouped into 3 clusters by amount, day & frequency",
