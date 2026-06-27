@@ -93,7 +93,7 @@ class DashboardView(ctk.CTkFrame):
         self._all_categories = []
         self._all_budgets = []
         self._build_ui()
-        self._refresh_data()
+        self.after(50, self._refresh_data)
 
     def _build_ui(self):
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")

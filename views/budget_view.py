@@ -25,7 +25,7 @@ class BudgetView(ctk.CTkFrame):
         self.user_data = user_data
         self.configure(fg_color="transparent")
         self._build_ui()
-        self._refresh()
+        self.after(50, self._refresh)
 
     def _build_ui(self):
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
