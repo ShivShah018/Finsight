@@ -1,6 +1,5 @@
 import customtkinter as ctk
-from utils.db_manager import DatabaseManager, User
-from utils.currency import SYMBOLS, convert_amount
+from utils.currency import SYMBOLS
 from datetime import datetime, date
 from collections import defaultdict
 
@@ -19,10 +18,11 @@ COLORS = {
 
 class BudgetView(ctk.CTkFrame):
 
-    def __init__(self, master, user: User, **kwargs):
+    def __init__(self, master, api, user, user_data, **kwargs):
         super().__init__(master, **kwargs)
+        self.api = api
         self.user = user
-        self.db = DatabaseManager.get_instance()
+        self.user_data = user_data
         self.configure(fg_color="transparent")
         self._build_ui()
         self._refresh()
@@ -44,8 +44,8 @@ class BudgetView(ctk.CTkFrame):
 
         self._month_frame = ctk.CTkFrame(self.scroll, fg_color="transparent")
         self._month_frame.pack(fill="x", padx=20, pady=(0, 12))
-        ctk.CTkLabel(self._month_frame, text="Month:",
-                     font=ctk.CTkFont(size=12), text_color=COLORS["text_muted"]).pack(side="left", padx=(0, 8))
+        ctk.CTkLabel(self._month_frame, text="Month:", font=ctk.CTkFont(size=12),
+                     text_color=COLORS["text_muted"]).pack(side="left", padx=(0, 8))
         now = date.today()
         self._month_var = ctk.StringVar(value=f"{now.year}-{now.month:02d}")
         self._month_menu = ctk.CTkOptionMenu(self._month_frame, variable=self._month_var,
@@ -71,49 +71,45 @@ class BudgetView(ctk.CTkFrame):
         try:
             ym = self._month_var.get().split("-")
             year, month = int(ym[0]), int(ym[1])
-            budgets = self.db.get_budget_limits(self.user.id)
-            spending = self.db.get_spending_by_category(self.user.id, month, year)
-            cat_expense = {r["name"]: float(r["total"]) for r in spending}
+
+            budgets = self.api.get_budgets()
+            spending = self.api.get_spending_by_category(month=month, year=year)
+            if isinstance(spending, dict) and "categories" in spending:
+                spending = spending["categories"]
+            cat_expense = {r["name"]: float(r["total"]) for r in spending} if isinstance(spending, list) else {}
 
             if not budgets:
-                ctk.CTkLabel(self._cards_frame, text="No budgets set — click '+ Set Budget' to add one.",
+                ctk.CTkLabel(self._cards_frame, text="No budgets set - click '+ Set Budget' to add one.",
                              text_color=COLORS["text_muted"]).pack(pady=40)
                 return
 
             sym = SYMBOLS.get(self.user.preferred_currency or "INR", "")
             for b in budgets:
-                spent = cat_expense.get(b.category_name, 0.0)
-                limit = b.monthly_limit
+                spent = cat_expense.get(b["category_name"], 0.0)
+                limit = b["monthly_limit"]
                 pct = (spent / limit * 100) if limit > 0 else 0
 
                 if pct >= 100:
-                    bar_color = "#ef4444"
-                    tip_color = "#ef4444"
+                    bar_color = "#ef4444"; tip_color = "#ef4444"
                     tip = f"Over budget by {sym}{spent - limit:,.2f}"
                 elif pct >= 90:
-                    bar_color = "#f97316"
-                    tip_color = "#f97316"
+                    bar_color = "#f97316"; tip_color = "#f97316"
                     tip = f"Almost over! Only {sym}{limit - spent:,.2f} left"
                 elif pct >= 70:
-                    bar_color = "#eab308"
-                    tip_color = "#eab308"
-                    tip = f"Nearing limit — {sym}{limit - spent:,.2f} remaining"
+                    bar_color = "#eab308"; tip_color = "#eab308"
+                    tip = f"Nearing limit - {sym}{limit - spent:,.2f} remaining"
                 else:
-                    bar_color = "#22c55e"
-                    tip_color = "#22c55e"
+                    bar_color = "#22c55e"; tip_color = "#22c55e"
                     remaining = limit - spent
-                    if remaining > 5000:
-                        tip = "Well under budget"
-                    else:
-                        tip = f"{sym}{remaining:,.2f} remaining"
+                    tip = "Well under budget" if remaining > 5000 else f"{sym}{remaining:,.2f} remaining"
 
                 card = ctk.CTkFrame(self._cards_frame, corner_radius=14, border_width=1,
-                                     border_color=COLORS["border"], fg_color=COLORS["card_bg"])
+                                    border_color=COLORS["border"], fg_color=COLORS["card_bg"])
                 card.pack(fill="x", pady=(0, 8))
 
                 top = ctk.CTkFrame(card, fg_color="transparent")
                 top.pack(fill="x", padx=16, pady=(12, 4))
-                ctk.CTkLabel(top, text=b.category_name, font=ctk.CTkFont(size=15, weight="bold"),
+                ctk.CTkLabel(top, text=b["category_name"], font=ctk.CTkFont(size=15, weight="bold"),
                              text_color=COLORS["text_primary"]).pack(side="left")
 
                 bar_frame = ctk.CTkFrame(card, fg_color="transparent")
@@ -133,8 +129,7 @@ class BudgetView(ctk.CTkFrame):
                 ctk.CTkLabel(info, text=f"{sym}{spent:,.2f} / {sym}{limit:,.2f}",
                              font=ctk.CTkFont(size=13, weight="bold"),
                              text_color=COLORS["text_primary"]).pack(side="left")
-                ctk.CTkLabel(info, text=f"{pct:.0f}% used",
-                             font=ctk.CTkFont(size=12),
+                ctk.CTkLabel(info, text=f"{pct:.0f}% used", font=ctk.CTkFont(size=12),
                              text_color=COLORS["text_muted"]).pack(side="right")
 
                 ctk.CTkLabel(card, text=tip, font=ctk.CTkFont(size=11, weight="bold"),
@@ -156,27 +151,37 @@ class BudgetView(ctk.CTkFrame):
             ctk.CTkLabel(self._cards_frame, text=f"Error: {e}",
                          text_color="#ef4444").pack()
 
+    def _get_spending_by_category(self, month=None, year=None):
+        try:
+            dashboard = self.api.get_dashboard(month=month, year=year)
+            return dashboard.get("top_categories", [])
+        except Exception:
+            return []
+
     def _show_set_budget_popup(self):
-        SetBudgetPopup(self.winfo_toplevel(), self.db, self.user, on_done=lambda: self._refresh())
+        SetBudgetPopup(self.winfo_toplevel(), self.api, self.user, on_done=lambda: self._refresh())
 
     def _edit_budget(self, budget):
-        SetBudgetPopup(self.winfo_toplevel(), self.db, self.user, edit_budget=budget,
+        SetBudgetPopup(self.winfo_toplevel(), self.api, self.user, edit_budget=budget,
                        on_done=lambda: self._refresh())
 
     def _remove_budget(self, budget):
         from tkinter import messagebox
-        ok = messagebox.askyesno("Remove Budget", f"Remove budget for {budget.category_name}?",
-                                  parent=self.winfo_toplevel())
+        ok = messagebox.askyesno("Remove Budget", f"Remove budget for {budget['category_name']}?",
+                                 parent=self.winfo_toplevel())
         if ok:
-            self.db.delete_budget_limit(budget.id, self.user.id)
-            self._refresh()
+            try:
+                self.api.delete_budget(budget["id"])
+                self._refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=self.winfo_toplevel())
 
 
 class SetBudgetPopup(ctk.CTkToplevel):
 
-    def __init__(self, master, db, user, on_done, edit_budget=None):
+    def __init__(self, master, api, user, on_done, edit_budget=None):
         super().__init__(master)
-        self.db = db
+        self.api = api
         self.user = user
         self.on_done = on_done
         self.edit_budget = edit_budget
@@ -195,7 +200,6 @@ class SetBudgetPopup(ctk.CTkToplevel):
     def _build(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=24, pady=20)
-
         row = 0
         main.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(main, text="Set Budget Limit", font=ctk.CTkFont(size=20, weight="bold"),
@@ -205,22 +209,27 @@ class SetBudgetPopup(ctk.CTkToplevel):
         ctk.CTkLabel(main, text="Category", font=ctk.CTkFont(size=13),
                      text_color=COLORS["text_secondary"], anchor="w").grid(row=row, column=0, sticky="w")
         row += 1
-        cats = self.db.get_categories(self.user.id, "expense")
-        cat_names = [c.name for c in cats]
-        self._cat_var = ctk.StringVar(value=self.edit_budget.category_name if self.edit_budget else (cat_names[0] if cat_names else ""))
+        try:
+            cats = self.api.get_categories("expense")
+            cat_names = [c["name"] for c in cats]
+        except Exception:
+            cats = []
+            cat_names = ["Error loading"]
+        self._all_cats = cats
+        self._cat_var = ctk.StringVar(value=self.edit_budget["category_name"] if self.edit_budget else (cat_names[0] if cat_names else ""))
         self._cat_menu = ctk.CTkOptionMenu(main, variable=self._cat_var, values=cat_names,
                                            fg_color="#1a1f3a", button_color=COLORS["accent"],
                                            dropdown_fg_color="#1a1f3a", font=ctk.CTkFont(size=13))
         self._cat_menu.grid(row=row, column=0, sticky="ew", pady=(4, 12))
         row += 1
 
-        ctk.CTkLabel(main, text="Monthly Limit (INR)", font=ctk.CTkFont(size=13),
+        ctk.CTkLabel(main, text="Monthly Limit", font=ctk.CTkFont(size=13),
                      text_color=COLORS["text_secondary"], anchor="w").grid(row=row, column=0, sticky="w")
         row += 1
         self._limit_entry = ctk.CTkEntry(main, height=40, corner_radius=8,
                                          border_color=COLORS["border"], font=ctk.CTkFont(size=14))
         if self.edit_budget:
-            self._limit_entry.insert(0, str(self.edit_budget.monthly_limit))
+            self._limit_entry.insert(0, str(self.edit_budget["monthly_limit"]))
         self._limit_entry.grid(row=row, column=0, sticky="ew", pady=(4, 6))
         row += 1
 
@@ -241,8 +250,7 @@ class SetBudgetPopup(ctk.CTkToplevel):
 
     def _save(self):
         cat_name = self._cat_var.get()
-        cats = self.db.get_categories(self.user.id, "expense")
-        matching = [c for c in cats if c.name == cat_name]
+        matching = [c for c in self._all_cats if c["name"] == cat_name]
         if not matching:
             self._status.configure(text="Select a category", text_color="#ef4444"); return
         try:
@@ -250,9 +258,12 @@ class SetBudgetPopup(ctk.CTkToplevel):
             if limit <= 0: raise ValueError
         except ValueError:
             self._status.configure(text="Enter a valid limit", text_color="#ef4444"); return
-        if self.edit_budget:
-            self.db.update_budget_limit(self.edit_budget.id, self.user.id, limit)
-        else:
-            self.db.set_budget_limit(self.user.id, matching[0].id, limit)
-        self.on_done()
-        self.destroy()
+        try:
+            if self.edit_budget:
+                self.api.update_budget(self.edit_budget["id"], limit)
+            else:
+                self.api.set_budget(matching[0]["id"], limit)
+            self.on_done()
+            self.destroy()
+        except Exception as e:
+            self._status.configure(text=f"\u26A0 {e}", text_color="#ef4444")

@@ -1,6 +1,11 @@
 """Tests for DatabaseManager with a real MySQL connection (requires finsight DB)."""
-import os, pytest
+import os
+import pytest
+from datetime import date, timedelta
 from utils.db_manager import DatabaseManager, BudgetLimit
+from utils.config_manager import load_env
+
+load_env()
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("FINSIGHT_DB_PASSWORD"),
@@ -112,7 +117,6 @@ def test_recurring():
     cats = db.get_categories(user.id, "expense")
     cat = cats[0]
 
-    from datetime import date, timedelta
     rid = db.add_recurring(user.id, cat.id, 1000.0, "expense",
                            "Monthly rent", "INR", "monthly", date.today())
     assert rid > 0
@@ -124,6 +128,3 @@ def test_recurring():
     db.update_recurring_next_date(rid, next_due)
     due = db.get_due_recurring(user.id)
     assert all(d["id"] != rid for d in due)
-
-
-from datetime import date

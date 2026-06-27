@@ -1,198 +1,269 @@
 # FinSight — Budget Planner with Savings Goals
 
-**A premium personal-finance desktop application** built with Python, CustomTkinter, and MySQL. Track income/expenses, manage savings goals, set monthly budgets, and generate PDF reports — all in a modern dark-themed UI.
+A production-ready personal finance desktop application with a full-stack architecture.
 
----
+## Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│              CustomTkinter GUI                    │
+│  (Dashboard · Add TX · Goals · Budget · Insights) │
+└───────────────────────┬──────────────────────────┘
+                        │ HTTP (httpx)
+                        ▼
+┌──────────────────────────────────────────────────┐
+│              FastAPI REST API                      │
+│         JWT Auth · CORS · Rate Limiting           │
+├──────────────────────────────────────────────────┤
+│                 Service Layer                      │
+│  Auth · Transaction · Goal · Budget · Analytics   │
+├──────────────────────────────────────────────────┤
+│               Repository Layer                     │
+│  UserRepo · TxRepo · GoalRepo · BudgetRepo        │
+├──────────────────────────────────────────────────┤
+│              Database Layer (MySQL)                │
+│  7 tables · Indexes · Foreign Keys · Constraints  │
+└──────────────────────────────────────────────────┘
+```
+
+The GUI never accesses MySQL directly. All database operations go through the REST API.
 
 ## Features
 
-- **Dashboard** — summary cards, pie chart (spending by category), bar chart (income vs expenses trend), recent transaction list with edit/delete
-- **Add Transaction** — income/expense form with category, currency (INR/USD/NPR), amount, date picker, description, receipt image attach, recurring toggle
-- **Savings Goals** — create targets with deadlines, add funds, track progress with bars, complete or cancel
-- **Budget Planner** — set monthly spending limits per category, visual progress bars with over-budget warnings
-- **Multi-Currency** — INR, USD, NPR with live conversion at dashboard render time; switch display currency freely
-- **Recurring Transactions** — auto-insert monthly recurring bills on app startup
-- **Remember Me** — optional auto-login via saved credentials
-- **Keyboard Shortcuts** — `Ctrl+N` (Add), `Ctrl+D` (Dashboard), `Ctrl+G` (Goals), `Ctrl+B` (Budget)
-- **Edit/Delete** — inline edit and delete on every transaction row
-
----
+- **Dashboard**: Income/expense summary, pie charts, trend charts, transaction list with edit/delete
+- **Transactions**: Add income/expense with categories, currencies (INR/USD/NPR), recurring support, receipt attachments
+- **Goals**: Create savings goals with progress tracking, auto-fund, confetti on completion
+- **Budgets**: Monthly per-category limits with color-coded progress bars and smart tips
+- **AI Insights**: Spending prediction (Linear Regression), behavior clustering (K-Means), category suggester (Logistic Regression), personalized tips
+- **Reports**: PDF report generation
+- **Auth**: JWT-based authentication with bcrypt password hashing
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| GUI | CustomTkinter 5.x (dark theme) |
-| Charts | Matplotlib (Agg backend) |
+| GUI | CustomTkinter |
+| API | FastAPI (Python 3.13) |
 | Database | MySQL 8.0 |
-| Python | 3.13+ |
-| Package mgr | uv |
-| Testing | pytest |
+| Auth | JWT + bcrypt |
+| ML | scikit-learn (LinearRegression, LogisticRegression, KMeans) |
+| PDF | ReportLab |
+| Testing | Pytest + FastAPI TestClient |
+| CI/CD | GitHub Actions |
+| Container | Docker / docker-compose |
 
----
-
-## Setup
+## Quick Start
 
 ### Prerequisites
+
 - Python 3.13+
-- [uv](https://docs.astral.sh/uv/) (Python package manager)
-- MySQL 8.0 running on `localhost:3306`
+- MySQL 8.0
+- uv (package manager) or pip
 
-### 1. Clone & enter the project
+### 1. Environment Setup
+
 ```bash
+# Clone the repo
+git clone <repo-url>
 cd finsight
+
+# Copy .env.example to .env and edit with your credentials
+cp .env.example .env
 ```
 
-### 2. Create virtual env & install dependencies
+### 2. Database Setup
+
 ```bash
-uv venv
+# Create the database
+mysql -u root -p < database/schema.sql
+mysql -u root -p < database/migration_v2.sql
+mysql -u root -p < database/migration_v3.sql
+mysql -u root -p < database/migration_v4.sql
+mysql -u root -p < database/migration_v5.sql
+
+# (Optional) Seed demo data
+uv run python scripts/seed_demo.py
+```
+
+### 3. Install & Run
+
+```bash
+# Install dependencies
 uv sync
-```
 
-### 3. Set up the database
-```bash
-# Set root password (PowerShell)
-$env:FINSIGHT_DB_PASSWORD="your_mysql_root_password"
+# Start the API server
+uv run uvicorn api.main:app --reload
 
-# Create the database and tables
-uv run python -c "
-import mysql.connector, os
-conn = mysql.connector.connect(host='localhost', user='root', password=os.environ['FINSIGHT_DB_PASSWORD'])
-cur = conn.cursor()
-with open('database/schema.sql') as f:
-    for stmt in f.read().split(';'):
-        if stmt.strip(): cur.execute(stmt)
-conn.commit()
-cur.close()
-conn.close()
-print('Schema created')
-"
-```
-
-### 4. Run migrations
-```bash
-uv run python -c "
-import mysql.connector, os
-conn = mysql.connector.connect(host='localhost', user='root',
-    password=os.environ['FINSIGHT_DB_PASSWORD'], database='finsight')
-cur = conn.cursor()
-for m in ['database/migration_v2.sql', 'database/migration_v3.sql']:
-    with open(m) as f:
-        for stmt in f.read().split(';'):
-            if stmt.strip():
-                try: cur.execute(stmt)
-                except mysql.connector.Error as e:
-                    if 'already exists' not in str(e).lower(): print(f'Warning: {e}')
-conn.commit(); cur.close(); conn.close()
-print('Migrations done')
-"
-```
-
-### 5. Launch
-```bash
-$env:FINSIGHT_DB_PASSWORD="your_mysql_root_password"
+# In another terminal, start the GUI
 uv run python main.py
 ```
 
-### Quick launch (single command)
-```powershell
-$env:FINSIGHT_DB_PASSWORD="your_password_here"; cd finsight; uv run python main.py
-```
+### Docker Setup
 
----
-
-## Database Schema
-
-```
-users          (id, full_name, email, password_hash, preferred_currency)
-categories     (id, user_id, name, type, icon, color)
-transactions   (id, user_id, category_id, amount, type, currency, description, receipt_path, transaction_date)
-savings_goals  (id, user_id, name, target_amount, current_amount, deadline, status)
-budget_limits  (id, user_id, category_id, monthly_limit)
-recurring_tx   (id, user_id, category_id, amount, type, currency, frequency, next_due_date)
-```
-
----
-
-## Tests
 ```bash
-# Unit tests (no DB needed)
-uv run pytest tests/test_currency.py tests/test_date_picker.py -v
-
-# DB integration tests (requires FINSIGHT_DB_PASSWORD set)
-uv run pytest tests/test_db_manager.py -v
-
-# All tests
-uv run pytest -v
+docker-compose up --build
 ```
 
----
+## API Endpoints
 
-## Keyboard Shortcuts
+### Authentication
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/auth/register` | Register a new user |
+| POST | `/auth/login` | Login, returns JWT token |
+| GET | `/auth/me` | Get current user profile |
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+D` | Dashboard |
-| `Ctrl+N` | Add Transaction |
-| `Ctrl+G` | Savings Goals |
-| `Ctrl+B` | Budget Planner |
+### Transactions
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/transactions` | List transactions (paginated, filterable) |
+| GET | `/transactions/{id}` | Get single transaction |
+| POST | `/transactions` | Create transaction |
+| PUT | `/transactions/{id}` | Update transaction |
+| DELETE | `/transactions/{id}` | Delete (soft by default) |
+| POST | `/transactions/{id}/restore` | Restore soft-deleted |
+| GET | `/transactions/deleted/recent` | Recently deleted |
 
----
+### Categories
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/categories` | List categories (optional type filter) |
 
-## Architecture
+### Goals
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/goals` | List savings goals |
+| POST | `/goals` | Create goal |
+| POST | `/goals/{id}/fund` | Add funds to goal |
+| POST | `/goals/{id}/complete` | Complete goal |
+| POST | `/goals/{id}/cancel` | Cancel goal |
+
+### Budgets
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/budgets` | List budget limits |
+| POST | `/budgets` | Set budget limit |
+| PUT | `/budgets/{id}` | Update budget limit |
+| DELETE | `/budgets/{id}` | Delete budget limit |
+| GET | `/budgets/utilization` | Budget utilization for month |
+
+### Analytics
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/dashboard` | Full dashboard summary |
+| GET | `/analytics/trends` | Monthly income/expense trends |
+| GET | `/analytics/summary` | Period summary |
+
+### Insights
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/insights/predict` | Spending prediction |
+| GET | `/insights/suggest-category` | AI category suggester |
+| GET | `/insights/cluster` | Spending behavior clusters |
+
+### Other
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/report/generate` | Generate PDF report |
+| GET | `/health` | Health check |
+| GET | `/docs` | Swagger UI docs |
+| GET | `/redoc` | ReDoc docs |
+
+## Project Structure
+
 ```
 finsight/
-├── main.py                  # App entry, sidebar, auth, shortcuts
-├── pyproject.toml           # Project metadata & deps
-├── docker-compose.yml       # MySQL + app containers
-├── Dockerfile               # App container
+├── api/
+│   ├── __init__.py
+│   └── main.py              # FastAPI routes
+├── api_client/
+│   ├── __init__.py
+│   └── client.py            # HTTP client for GUI
 ├── database/
-│   ├── schema.sql           # Initial schema (4 tables)
+│   ├── schema.sql           # Base schema
 │   ├── migration_v2.sql     # Currency columns
-│   └── migration_v3.sql     # Budgets, recurring, receipts
-├── utils/
-│   ├── db_manager.py        # All DB operations (CRUD)
-│   ├── currency.py          # Conversion rates, formatting
-│   ├── date_picker.py       # Calendar popup widget
-│   ├── config_manager.py    # Credential persistence
-│   └── recurring.py         # Auto-process recurring txs
+│   ├── migration_v3.sql     # Budgets, recurring, receipts
+│   ├── migration_v4.sql     # Soft-delete, splits, bills
+│   └── migration_v5.sql     # Indexes, constraints
+├── repositories/
+│   ├── __init__.py
+│   ├── base.py              # Base repository
+│   ├── user_repository.py
+│   ├── transaction_repository.py
+│   ├── goal_repository.py
+│   ├── budget_repository.py
+│   └── category_repository.py
+├── services/
+│   ├── __init__.py
+│   ├── auth_service.py       # JWT + bcrypt
+│   ├── transaction_service.py
+│   ├── goal_service.py
+│   ├── budget_service.py
+│   └── analytics_service.py
+├── schemas/
+│   ├── __init__.py
+│   ├── auth.py               # Pydantic models
+│   ├── transactions.py
+│   ├── goals.py
+│   ├── budgets.py
+│   └── analytics.py
 ├── views/
-│   ├── auth_view.py         # Login / Register
-│   ├── dashboard_view.py    # Dashboard, charts, tx list
-│   ├── add_transaction_view.py  # Transaction form
-│   ├── goals_view.py        # Savings goals management
-│   └── budget_view.py       # Budget Planner tab
+│   ├── auth_view.py
+│   ├── dashboard_view.py
+│   ├── add_transaction_view.py
+│   ├── goals_view.py
+│   ├── budget_view.py
+│   └── insights_view.py
+├── utils/
+│   ├── db_manager.py         # Legacy DB connector
+│   ├── config_manager.py     # .env + credentials
+│   ├── currency.py           # Conversion & formatting
+│   ├── date_picker.py        # Calendar widget
+│   ├── insights.py           # ML models
+│   ├── recurring.py          # Auto-recurring processor
+│   └── report_generator.py   # PDF + email
 ├── tests/
-│   ├── test_currency.py     # Currency conversion tests
-│   ├── test_date_picker.py  # Date picker tests
-│   └── test_db_manager.py   # DB integration tests
-└── assets/
-    └── finsight_theme.json  # Optional theme file
+│   ├── conftest.py
+│   ├── test_db_manager.py
+│   ├── test_api.py
+│   ├── test_currency.py
+│   └── test_date_picker.py
+├── scripts/
+│   ├── seed_demo.py
+│   ├── test_api.py
+│   └── capture_screenshots.py
+├── .github/workflows/
+│   └── ci.yml                # CI/CD pipeline
+├── main.py                   # GUI entry point
+├── docker-compose.yml
+├── Dockerfile.api
+├── .env.example
+└── pyproject.toml
 ```
 
----
-
-## Screenshots
-
-| Dashboard | Add Transaction |
-|-----------|----------------|
-| ![Dashboard](assets/screenshot_dashboard.png) | ![Add Transaction](assets/screenshot_add_tx.png) |
-
-| Savings Goals | Budget Planner |
-|---------------|----------------|
-| ![Goals](assets/screenshot_goals.png) | ![Budget](assets/screenshot_budget.png) |
-
-### Capture your own screenshots
+## Testing
 
 ```bash
-# 1. Seed demo data
-$env:FINSIGHT_DB_PASSWORD="your_password"
-uv run python scripts/seed_demo.py
+# Run all tests
+pytest tests/ -v
 
-# 2. Launch the app and login with: demo@finsight.app / demo123
-$env:FINSIGHT_DB_PASSWORD="your_password"
-uv run python main.py
-
-# 3. With the app open and logged in, run:
-uv run python scripts/capture_screenshots.py
+# Run API tests (requires MySQL with FINSIGHT_DB_PASSWORD set)
+pytest tests/test_api.py -v
 ```
+
+## CI/CD
+
+GitHub Actions runs on push to main/develop:
+- **Lint**: ruff code quality checks
+- **Test**: Database tests with MySQL service container
+- **API Test**: Integration tests against live API
+
+## Security
+
+- JWT-based authentication (HS256)
+- bcrypt password hashing
+- Pydantic input validation on all endpoints
+- CORS middleware configured
+- SQL injection prevention via parameterized queries
+- Environment-based secret management
+- No hardcoded credentials

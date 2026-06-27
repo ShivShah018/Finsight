@@ -1,8 +1,7 @@
 import random
 import customtkinter as ctk
-from utils.db_manager import DatabaseManager, User, SavingsGoal
 from utils.currency import SYMBOLS
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from tkinter import messagebox
 
 COLORS = {
@@ -19,10 +18,11 @@ COLORS = {
 
 class GoalsView(ctk.CTkFrame):
 
-    def __init__(self, master, user: User, **kwargs):
+    def __init__(self, master, api, user, user_data, **kwargs):
         super().__init__(master, **kwargs)
+        self.api = api
         self.user = user
-        self.db = DatabaseManager.get_instance()
+        self.user_data = user_data
         self.configure(fg_color="transparent")
         self._build_ui()
         self._refresh()
@@ -50,7 +50,7 @@ class GoalsView(ctk.CTkFrame):
 
     def _refresh(self):
         try:
-            goals = self.db.get_goals(self.user.id)
+            goals = self.api.get_goals()
         except Exception as e:
             for w in self._goals_container.winfo_children(): w.destroy()
             ctk.CTkLabel(self._goals_container, text=f"Error: {e}",
@@ -62,9 +62,9 @@ class GoalsView(ctk.CTkFrame):
     def _render_stats(self, goals):
         for w in self._stats_frame.winfo_children(): w.destroy()
         sym = SYMBOLS.get(self.user.preferred_currency or "INR", "")
-        active = [g for g in goals if g.status == "active"]
-        completed = [g for g in goals if g.status == "completed"]
-        total_saved = sum(g.current_amount for g in goals)
+        active = [g for g in goals if g["status"] == "active"]
+        completed = [g for g in goals if g["status"] == "completed"]
+        total_saved = sum(g["current_amount"] for g in goals)
 
         stats = [
             ("Total Saved", f"{sym}{total_saved:,.0f}", COLORS["success"]),
@@ -88,13 +88,13 @@ class GoalsView(ctk.CTkFrame):
     def _render_goals(self, goals):
         for w in self._goals_container.winfo_children(): w.destroy()
         if not goals:
-            ctk.CTkLabel(self._goals_container, text="No goals yet — click '+ New Goal' to start.",
+            ctk.CTkLabel(self._goals_container, text="No goals yet - click '+ New Goal' to start.",
                          text_color=COLORS["text_muted"]).pack(pady=40)
             return
         for g in goals:
             self._render_goal_card(g)
 
-    def _render_goal_card(self, g: SavingsGoal):
+    def _render_goal_card(self, g):
         sym = SYMBOLS.get(self.user.preferred_currency or "INR", "")
         card = ctk.CTkFrame(self._goals_container, corner_radius=14, border_width=1,
                             border_color=COLORS["border"], fg_color=COLORS["card_bg"])
@@ -103,19 +103,19 @@ class GoalsView(ctk.CTkFrame):
         top = ctk.CTkFrame(card, fg_color="transparent")
         top.pack(fill="x", padx=16, pady=(14, 4))
 
-        status_color = COLORS["success"] if g.status == "completed" else COLORS["accent"]
-        badge = ctk.CTkLabel(top, text=g.status.title(), font=ctk.CTkFont(size=10, weight="bold"),
-                              text_color=status_color, fg_color="#1a1f3a", corner_radius=6,
-                              padx=8, pady=2)
+        status_color = COLORS["success"] if g["status"] == "completed" else COLORS["accent"]
+        badge = ctk.CTkLabel(top, text=g["status"].title(), font=ctk.CTkFont(size=10, weight="bold"),
+                             text_color=status_color, fg_color="#1a1f3a", corner_radius=6,
+                             padx=8, pady=2)
         badge.pack(side="right", padx=(6, 0))
-        ctk.CTkLabel(top, text=f"  {g.name}", font=ctk.CTkFont(size=16, weight="bold"),
+        ctk.CTkLabel(top, text=f"  {g['name']}", font=ctk.CTkFont(size=16, weight="bold"),
                      text_color=COLORS["text_primary"], anchor="w").pack(side="left")
 
-        # Deadline
-        if g.deadline:
-            remaining = (g.deadline - date.today()).days
+        if g.get("deadline"):
+            dl = datetime.strptime(g["deadline"], "%Y-%m-%d").date() if isinstance(g["deadline"], str) else g["deadline"]
+            remaining = (dl - date.today()).days
             if remaining > 0:
-                dl_text = f"Due in {remaining}d ({g.deadline.strftime('%d %b %Y')})"
+                dl_text = f"Due in {remaining}d ({dl.strftime('%d %b %Y')})"
             elif remaining == 0:
                 dl_text = "Due today!"
             else:
@@ -124,52 +124,49 @@ class GoalsView(ctk.CTkFrame):
             ctk.CTkLabel(card, text=dl_text, font=ctk.CTkFont(size=11),
                          text_color=dl_color, anchor="w").pack(anchor="w", padx=16, pady=(0, 4))
 
-        # Amount & progress
         amt_frame = ctk.CTkFrame(card, fg_color="transparent")
         amt_frame.pack(fill="x", padx=16, pady=(4, 4))
-        ctk.CTkLabel(amt_frame, text=f"{sym}{g.current_amount:,.2f} / {sym}{g.target_amount:,.2f}",
+        ctk.CTkLabel(amt_frame, text=f"{sym}{g['current_amount']:,.2f} / {sym}{g['target_amount']:,.2f}",
                      font=ctk.CTkFont(size=13, weight="bold"),
                      text_color=COLORS["text_primary"]).pack(side="left")
-        pct_color = COLORS["success"] if g.progress_pct >= 100 else COLORS["accent"]
-        ctk.CTkLabel(amt_frame, text=f"{g.progress_pct:.1f}%",
+        pct_color = COLORS["success"] if g["progress_pct"] >= 100 else COLORS["accent"]
+        ctk.CTkLabel(amt_frame, text=f"{g['progress_pct']:.1f}%",
                      font=ctk.CTkFont(size=13, weight="bold"),
                      text_color=pct_color).pack(side="right")
 
-        # Progress bar
         bar_bg = ctk.CTkFrame(card, height=10, corner_radius=5, fg_color="#1a1f3a")
         bar_bg.pack(fill="x", padx=16, pady=(0, 4))
-        pct = min(g.progress_pct, 100) / 100
-        fill_color = COLORS["success"] if g.progress_pct >= 100 else COLORS["accent"]
+        pct = min(g["progress_pct"], 100) / 100
+        fill_color = COLORS["success"] if g["progress_pct"] >= 100 else COLORS["accent"]
         bar_fill = ctk.CTkFrame(bar_bg, height=10, corner_radius=5, fg_color=fill_color)
         bar_fill.place(relx=0, rely=0, relwidth=pct, relheight=1)
 
-        # Action buttons
         act = ctk.CTkFrame(card, fg_color="transparent")
         act.pack(fill="x", padx=16, pady=(4, 14))
-        if g.status == "active":
+        if g["status"] == "active":
             ctk.CTkButton(act, text="+ Add Funds", width=90, height=30, corner_radius=8,
                            fg_color=COLORS["accent"], font=ctk.CTkFont(size=11, weight="bold"),
-                           command=lambda gi=g.id: self._show_add_funds_popup(gi)).pack(side="left", padx=(0, 6))
+                           command=lambda gi=g["id"]: self._show_add_funds_popup(gi)).pack(side="left", padx=(0, 6))
             ctk.CTkButton(act, text="Complete", width=80, height=30, corner_radius=8,
                            fg_color="transparent", text_color=COLORS["success"],
                            border_color=COLORS["success"], border_width=1,
                            font=ctk.CTkFont(size=11, weight="bold"),
-                           command=lambda gi=g.id: self._complete_goal(gi)).pack(side="left", padx=6)
+                           command=lambda gi=g["id"]: self._complete_goal(gi)).pack(side="left", padx=6)
             ctk.CTkButton(act, text="Cancel", width=70, height=30, corner_radius=8,
                            fg_color="transparent", text_color=COLORS["expense"],
                            hover_color="#1a1f3a", font=ctk.CTkFont(size=11),
-                           command=lambda gi=g.id: self._cancel_goal(gi)).pack(side="left", padx=6)
+                           command=lambda gi=g["id"]: self._cancel_goal(gi)).pack(side="left", padx=6)
         else:
-            ctk.CTkLabel(act, text="\u2713 Completed" if g.status == "completed" else "\u2717 Cancelled",
+            ctk.CTkLabel(act, text="\u2713 Completed" if g["status"] == "completed" else "\u2717 Cancelled",
                          font=ctk.CTkFont(size=12, weight="bold"),
-                         text_color=COLORS["success"] if g.status == "completed" else COLORS["text_muted"]
+                         text_color=COLORS["success"] if g["status"] == "completed" else COLORS["text_muted"]
                          ).pack(side="left")
 
     def _show_new_goal_popup(self):
-        NewGoalPopup(self.winfo_toplevel(), self.db, self.user, on_done=lambda: self._refresh())
+        NewGoalPopup(self.winfo_toplevel(), self.api, self.user, on_done=lambda: self._refresh())
 
     def _show_add_funds_popup(self, goal_id):
-        AddFundsPopup(self.winfo_toplevel(), self.db, goal_id, on_done=lambda: self._refresh())
+        AddFundsPopup(self.winfo_toplevel(), self.api, goal_id, on_done=lambda: self._refresh())
 
     def _confetti(self):
         top = self.winfo_toplevel()
@@ -193,25 +190,32 @@ class GoalsView(ctk.CTkFrame):
         top.after(1500, fade)
 
     def _complete_goal(self, goal_id):
-        ok = messagebox.askyesno("Complete Goal", "Mark this goal as completed?", parent=self.winfo_toplevel())
+        ok = messagebox.askyesno("Complete Goal", "Mark this goal as completed?",
+                                 parent=self.winfo_toplevel())
         if ok:
-            self.db.complete_goal(goal_id)
-            self._confetti()
-            self._refresh()
+            try:
+                self.api.complete_goal(goal_id)
+                self._confetti()
+                self._refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=self.winfo_toplevel())
 
     def _cancel_goal(self, goal_id):
         ok = messagebox.askyesno("Cancel Goal", "Cancel this goal? It will be hidden from the list.",
                                  parent=self.winfo_toplevel())
         if ok:
-            self.db.cancel_goal(goal_id)
-            self._refresh()
+            try:
+                self.api.cancel_goal(goal_id)
+                self._refresh()
+            except Exception as e:
+                messagebox.showerror("Error", str(e), parent=self.winfo_toplevel())
 
 
 class NewGoalPopup(ctk.CTkToplevel):
 
-    def __init__(self, master, db, user, on_done):
+    def __init__(self, master, api, user, on_done):
         super().__init__(master)
-        self.db = db
+        self.api = api
         self.user = user
         self.on_done = on_done
         self.title("New Savings Goal")
@@ -228,7 +232,6 @@ class NewGoalPopup(ctk.CTkToplevel):
     def _build(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=28, pady=24)
-
         row = 0
         main.grid_columnconfigure(0, weight=1)
 
@@ -257,12 +260,10 @@ class NewGoalPopup(ctk.CTkToplevel):
         row += 1
         self._deadline_entry = ctk.CTkEntry(main, height=40, corner_radius=8,
                                             border_color=COLORS["border"],
-                                            font=ctk.CTkFont(size=14),
-                                            placeholder_text="Optional")
+                                            font=ctk.CTkFont(size=14), placeholder_text="Optional")
         self._deadline_entry.grid(row=row, column=0, sticky="ew", pady=(4, 6))
         row += 1
 
-        # Auto-fund
         self._auto_fund_var = ctk.BooleanVar(value=False)
         self._auto_fund_cb = ctk.CTkCheckBox(main, text="Auto-fund from income category",
                                               variable=self._auto_fund_var,
@@ -288,13 +289,12 @@ class NewGoalPopup(ctk.CTkToplevel):
         btn_frame = ctk.CTkFrame(main, fg_color="transparent")
         btn_frame.grid(row=row, column=0, sticky="s", pady=(8, 0))
         ctk.CTkButton(btn_frame, text="  Add Goal  ", width=100, height=42, corner_radius=10,
-                       fg_color="#22c55e", text_color="#ffffff",
-                       hover_color="#16a34a", font=ctk.CTkFont(size=15, weight="bold"),
+                       fg_color="#22c55e", text_color="#ffffff", hover_color="#16a34a",
+                       font=ctk.CTkFont(size=15, weight="bold"),
                        command=self._save).pack(side="left", padx=8)
         ctk.CTkButton(btn_frame, text="  Cancel  ", width=100, height=42, corner_radius=10,
-                       fg_color="#334155", text_color="#f1f5f9",
-                       hover_color="#475569", font=ctk.CTkFont(size=15),
-                       command=self.destroy).pack(side="left", padx=8)
+                       fg_color="#334155", text_color="#f1f5f9", hover_color="#475569",
+                       font=ctk.CTkFont(size=15), command=self.destroy).pack(side="left", padx=8)
 
     def _toggle_auto_fund(self):
         state = "normal" if self._auto_fund_var.get() else "disabled"
@@ -313,30 +313,35 @@ class NewGoalPopup(ctk.CTkToplevel):
         deadline = None
         if dl:
             try:
-                deadline = datetime.strptime(dl, "%Y-%m-%d").date()
-                if deadline <= date.today():
+                dl_date = datetime.strptime(dl, "%Y-%m-%d").date()
+                if dl_date <= date.today():
                     self._status.configure(text="\u26A0 Deadline must be in the future", text_color="#ef4444")
                     return
+                deadline = dl
             except ValueError:
                 self._status.configure(text="\u26A0 Use YYYY-MM-DD format", text_color="#ef4444")
                 return
-        gid = self.db.add_goal(self.user.id, name, target, deadline)
+        auto_fund_amount = 0
         if self._auto_fund_var.get():
             try:
-                af_amount = float(self._auto_fund_amount_entry.get().strip())
-                if af_amount > 0:
-                    self.db.set_goal_auto_fund(gid, self.user.id, af_amount, None)
+                auto_fund_amount = float(self._auto_fund_amount_entry.get().strip())
+                if auto_fund_amount <= 0:
+                    auto_fund_amount = 0
             except ValueError:
-                pass
-        self.on_done()
-        self.destroy()
+                auto_fund_amount = 0
+        try:
+            self.api.create_goal(name, target, deadline, auto_fund_amount)
+            self.on_done()
+            self.destroy()
+        except Exception as e:
+            self._status.configure(text=f"\u26A0 {e}", text_color="#ef4444")
 
 
 class AddFundsPopup(ctk.CTkToplevel):
 
-    def __init__(self, master, db, goal_id, on_done):
+    def __init__(self, master, api, goal_id, on_done):
         super().__init__(master)
-        self.db = db
+        self.api = api
         self.goal_id = goal_id
         self.on_done = on_done
         self.title("Add Funds to Goal")
@@ -353,40 +358,33 @@ class AddFundsPopup(ctk.CTkToplevel):
     def _build(self):
         main = ctk.CTkFrame(self, fg_color="transparent")
         main.pack(fill="both", expand=True, padx=28, pady=24)
-
         row = 0
         main.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(main, text="Add Funds", font=ctk.CTkFont(size=20, weight="bold"),
                      text_color=COLORS["text_primary"]).grid(row=row, column=0, pady=(0, 18), sticky="w")
         row += 1
-
         ctk.CTkLabel(main, text="Amount to add", font=ctk.CTkFont(size=13),
                      text_color=COLORS["text_secondary"], anchor="w").grid(row=row, column=0, sticky="w")
         row += 1
-
         self._amount_entry = ctk.CTkEntry(main, height=40, corner_radius=8,
                                           border_color=COLORS["border"],
-                                          font=ctk.CTkFont(size=14),
-                                          placeholder_text="0.00")
+                                          font=ctk.CTkFont(size=14), placeholder_text="0.00")
         self._amount_entry.grid(row=row, column=0, sticky="ew", pady=(4, 12))
         row += 1
-
         self._status = ctk.CTkLabel(main, text="", font=ctk.CTkFont(size=12))
         self._status.grid(row=row, column=0, pady=4)
         row += 1
-
         main.grid_rowconfigure(row, weight=1)
         btn_frame = ctk.CTkFrame(main, fg_color="transparent")
         btn_frame.grid(row=row, column=0, sticky="s", pady=(8, 0))
         ctk.CTkButton(btn_frame, text="  Add Funds  ", width=100, height=42, corner_radius=10,
-                       fg_color="#22c55e", text_color="#ffffff",
-                       hover_color="#16a34a", font=ctk.CTkFont(size=15, weight="bold"),
+                       fg_color="#22c55e", text_color="#ffffff", hover_color="#16a34a",
+                       font=ctk.CTkFont(size=15, weight="bold"),
                        command=self._save).pack(side="left", padx=8)
         ctk.CTkButton(btn_frame, text="  Cancel  ", width=100, height=42, corner_radius=10,
-                       fg_color="#334155", text_color="#f1f5f9",
-                       hover_color="#475569", font=ctk.CTkFont(size=15),
-                       command=self.destroy).pack(side="left", padx=8)
+                       fg_color="#334155", text_color="#f1f5f9", hover_color="#475569",
+                       font=ctk.CTkFont(size=15), command=self.destroy).pack(side="left", padx=8)
 
     def _save(self):
         try:
@@ -395,6 +393,9 @@ class AddFundsPopup(ctk.CTkToplevel):
         except ValueError:
             self._status.configure(text="\u26A0 Enter a valid amount", text_color="#ef4444")
             return
-        self.db.update_goal_progress(self.goal_id, amt)
-        self.on_done()
-        self.destroy()
+        try:
+            self.api.fund_goal(self.goal_id, amt)
+            self.on_done()
+            self.destroy()
+        except Exception as e:
+            self._status.configure(text=f"\u26A0 {e}", text_color="#ef4444")

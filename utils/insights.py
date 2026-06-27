@@ -44,12 +44,11 @@ def train_spending_model(transactions):
     else:
         trend = "stable"
 
-    r2 = model.score(X, y)
     return {
-        "predicted_total": round(predicted, 2),
+        "predicted_total": round(float(predicted), 2),
         "trend": trend,
-        "confidence": round(max(0, r2), 2),
-        "slope": round(slope, 2),
+        "confidence": round(float(max(0, model.score(X, y))), 2),
+        "slope": round(float(slope), 2),
     }
 
 
@@ -122,8 +121,8 @@ def suggest_category(description, categories):
     model = LogisticRegression(multi_class="multinomial", solver="lbfgs", max_iter=200)
     model.fit(X_train, y_train)
     probs = model.predict_proba(x_test)[0]
-    best_idx = probs.argmax()
-    confidence = probs[best_idx]
+    best_idx = int(probs.argmax())
+    confidence = float(probs[best_idx])
 
     if confidence < 0.15:
         return None

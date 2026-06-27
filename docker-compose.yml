@@ -6,7 +6,7 @@ services:
     container_name: finsight-db
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: Shiv@m018
+      MYSQL_ROOT_PASSWORD: ${FINSIGHT_DB_PASSWORD:-Shiv@m018}
       MYSQL_DATABASE: finsight
     ports:
       - "3306:3306"
@@ -15,20 +15,33 @@ services:
       - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
       - ./database/migration_v2.sql:/docker-entrypoint-initdb.d/02-migration_v2.sql:ro
       - ./database/migration_v3.sql:/docker-entrypoint-initdb.d/03-migration_v3.sql:ro
+      - ./database/migration_v4.sql:/docker-entrypoint-initdb.d/04-migration_v4.sql:ro
+      - ./database/migration_v5.sql:/docker-entrypoint-initdb.d/05-migration_v5.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  app:
+  api:
     build:
       context: .
-      dockerfile: Dockerfile
-    container_name: finsight-app
+      dockerfile: Dockerfile.api
+    container_name: finsight-api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
     environment:
       FINSIGHT_DB_HOST: db
-      FINSIGHT_DB_PASSWORD: Shiv@m018
-      DISPLAY: ${DISPLAY:-:0}
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:ro
+      FINSIGHT_DB_USER: root
+      FINSIGHT_DB_PASSWORD: ${FINSIGHT_DB_PASSWORD:-Shiv@m018}
+      FINSIGHT_DB_NAME: finsight
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-finsight-jwt-secret-change-in-production}
+      FINSIGHT_ENV: production
+      LOG_LEVEL: INFO
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
 volumes:
   finsight_data:

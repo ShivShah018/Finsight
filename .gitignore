@@ -19,3 +19,9 @@ Thumbs.db
 
 # Temp
 *.tmp
+
+# Environment (contains secrets)
+.env
+
+# Reports
+reports/

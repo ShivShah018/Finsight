@@ -1,0 +1,105 @@
+name: FinSight CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install ruff mypy
+      - name: Lint with ruff
+        run: ruff check . --ignore E501
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: finsight_test
+        ports:
+          - 3306:3306
+        options: --health-cmd "mysqladmin ping -h localhost" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install -e .
+      - name: Initialize database
+        run: |
+          mysql -h 127.0.0.1 -uroot -ptestpass -e "CREATE DATABASE IF NOT EXISTS finsight_test"
+          mysql -h 127.0.0.1 -uroot -ptestpass finsight_test < database/schema.sql
+          mysql -h 127.0.0.1 -uroot -ptestpass finsight_test < database/migration_v2.sql
+          mysql -h 127.0.0.1 -uroot -ptestpass finsight_test < database/migration_v3.sql
+          mysql -h 127.0.0.1 -uroot -ptestpass finsight_test < database/migration_v4.sql
+          mysql -h 127.0.0.1 -uroot -ptestpass finsight_test < database/migration_v5.sql
+        env:
+          MYSQL_PWD: testpass
+      - name: Run tests
+        run: pytest tests/ -v
+        env:
+          FINSIGHT_DB_HOST: 127.0.0.1
+          FINSIGHT_DB_USER: root
+          FINSIGHT_DB_PASSWORD: testpass
+          FINSIGHT_DB_NAME: finsight_test
+          JWT_SECRET_KEY: test-jwt-secret
+
+  api-test:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: finsight_test
+        ports:
+          - 3306:3306
+        options: --health-cmd "mysqladmin ping -h localhost" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install dependencies
+        run: pip install -e .
+      - name: Initialize database
+        run: |
+          mysql -h 127.0.0.1 -uroot -ptestpass -e "CREATE DATABASE IF NOT EXISTS finsight_test"
+          mysql -h 127.0.0.1 -uroot -ptestpass finsight_test < database/schema.sql
+          mysql -h 127.0.0.1 -uroot -ptestpass finsight_test < database/migration_v2.sql
+        env:
+          MYSQL_PWD: testpass
+      - name: Start API server
+        run: |
+          uvicorn api.main:app --host 0.0.0.0 --port 8000 &
+          sleep 3
+        env:
+          FINSIGHT_DB_HOST: 127.0.0.1
+          FINSIGHT_DB_USER: root
+          FINSIGHT_DB_PASSWORD: testpass
+          FINSIGHT_DB_NAME: finsight_test
+          JWT_SECRET_KEY: test-jwt-secret
+      - name: Test API endpoints
+        run: python scripts/test_api.py
+        env:
+          FINSIGHT_DB_HOST: 127.0.0.1
+          FINSIGHT_DB_USER: root
+          FINSIGHT_DB_PASSWORD: testpass
+          FINSIGHT_DB_NAME: finsight_test
+          FINSIGHT_API_URL: http://localhost:8000
