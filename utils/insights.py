@@ -1,4 +1,5 @@
 """AI/ML insights, predictions, and smart tips."""
+import re
 import numpy as np
 from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
@@ -65,7 +66,9 @@ def suggest_category(description, categories):
 
     keyword_map = {
         "Food & Dining": ["food", "restaurant", "pizza", "lunch", "dinner", "breakfast",
-                          "grocery", "groceries", "snack", "cafe", "coffee", "zomato", "swiggy"],
+                          "grocery", "groceries", "snack", "cafe", "coffee", "zomato", "swiggy",
+                          "hungry", "eat", "eating", "dine", "dining", "meal", "takeaway",
+                          "delivery", "order", "tea", "juice", "shake", "bakery", "beverage"],
         "Rent": ["rent", "lease", "apartment"],
         "Transport": ["uber", "ola", "cab", "taxi", "fuel", "petrol", "diesel", "metro",
                       "bus", "train", "auto", "parking", "toll"],
@@ -90,7 +93,7 @@ def suggest_category(description, categories):
         kws = keyword_map.get(c.name, [])
         if not kws:
             continue
-        matches = sum(1 for kw in kws if kw in desc_lower)
+        matches = sum(1 for kw in kws if re.search(r'\b' + re.escape(kw) + r'\b', desc_lower))
         if matches:
             scores[c.name] = (matches, c)
 
