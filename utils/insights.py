@@ -1,6 +1,6 @@
 """AI/ML insights, predictions, and smart tips."""
 import numpy as np
-from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.linear_model import LinearRegression
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from datetime import date, timedelta
@@ -54,15 +54,15 @@ def train_spending_model(transactions):
 
 def suggest_category(description, categories):
     """
-    Suggest a category using Logistic Regression trained on keyword features.
-    Uses TF-IDF vectorization + multi-class LogisticRegression.
+    Suggest a category by keyword matching.
+    Counts how many keywords per category appear in the description,
+    returns the best match with a confidence score.
     """
     if not description or not categories:
         return None
 
     desc_lower = description.lower()
 
-    # Keyword feature matrix for training
     keyword_map = {
         "Food & Dining": ["food", "restaurant", "pizza", "lunch", "dinner", "breakfast",
                           "grocery", "groceries", "snack", "cafe", "coffee", "zomato", "swiggy"],
@@ -84,54 +84,24 @@ def suggest_category(description, categories):
         "Investments": ["investment", "mutual fund", "stock", "dividend", "interest"],
     }
 
-    # Filter to only user's categories
-    active_keywords = {c.name: keyword_map.get(c.name, []) for c in categories}
-    active_keywords = {k: v for k, v in active_keywords.items() if v}
+    # Score each category by keyword match count
+    scores = {}
+    for c in categories:
+        kws = keyword_map.get(c.name, [])
+        if not kws:
+            continue
+        matches = sum(1 for kw in kws if kw in desc_lower)
+        if matches:
+            scores[c.name] = (matches, c)
 
-    if not active_keywords:
+    if not scores:
         return None
 
-    # Build training data: keyword presence vectors
-    cat_names = list(active_keywords.keys())
-    all_keywords = list(set(kw for kws in active_keywords.values() for kw in kws))
-
-    if not all_keywords:
-        return None
-
-    # Create feature vectors for each category
-    X_train = []
-    y_train = []
-    for i, cat in enumerate(cat_names):
-        vec = [1 if kw in " ".join(active_keywords[cat]) else 0 for kw in all_keywords]
-        X_train.append(vec)
-        y_train.append(i)
-
-    # Feature vector for input description
-    x_test = [1 if kw in desc_lower else 0 for kw in all_keywords]
-
-    X_train = np.array(X_train)
-    y_train = np.array(y_train)
-    x_test = np.array(x_test).reshape(1, -1)
-
-    # Train Logistic Regression with multiple classes
-    if len(cat_names) < 2:
-        # Only one active category
-        return (categories[[c.name for c in categories].index(cat_names[0])], 1.0)
-
-    model = LogisticRegression(multi_class="multinomial", solver="lbfgs", max_iter=200)
-    model.fit(X_train, y_train)
-    probs = model.predict_proba(x_test)[0]
-    best_idx = int(probs.argmax())
-    confidence = float(probs[best_idx])
-
-    if confidence < 0.15:
-        return None
-
-    best_cat_name = cat_names[best_idx]
-    cat_match = [c for c in categories if c.name == best_cat_name]
-    if cat_match:
-        return (cat_match[0], round(confidence, 2))
-    return None
+    total_matches = sum(v[0] for v in scores.values())
+    best_name = max(scores, key=lambda n: scores[n][0])
+    best_cat = scores[best_name][1]
+    confidence = scores[best_name][0] / total_matches if total_matches else 1.0
+    return (best_cat, round(confidence, 2))
 
 
 def cluster_transactions(transactions, n_clusters=3):
